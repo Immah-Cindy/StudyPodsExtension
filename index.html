@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Study Pods Booking</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 60px;
+    max-width: 1200px;
+    background-color: #ffffff;
+    color: #2B3990;
+    font-size: 1.6rem;
+  }
+
+  h1 {
+    text-align: center;
+    color: #2B3990;
+    margin-bottom: 45px;
+    font-size: 2.8rem;
+  }
+
+  form {
+    margin-bottom: 40px;
+    padding: 35px;
+    border: 4px solid #2B3990;
+    border-radius: 14px;
+    background-color: #fefefe;
+  }
+
+  label {
+    display: block;
+    margin-top: 22px;
+    font-weight: bold;
+    font-size: 1.5rem;
+  }
+
+  select,
+  input[type="time"],
+  input[type="text"] {
+    width: 360px;
+    padding: 16px;
+    margin-top: 10px;
+    border: 2.5px solid #2B3990;
+    border-radius: 8px;
+    font-size: 1.5rem;
+    color: #2B3990;
+  }
+
+  button {
+    margin-top: 30px;
+    padding: 16px 36px;
+    font-size: 1.5rem;
+    background-color: #CDCB05;
+    border: none;
+    border-radius: 8px;
+    color: #2B3990;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+
+  button:hover {
+    background-color: #b4b303;
+  }
+
+  #undo-button {
+    background-color: #2B3990;
+    color: #ffffff;
+    margin-left: 25px;
+  }
+
+  #undo-button:hover {
+    background-color: #1f2c6b;
+  }
+
+  #error-message {
+    color: #d0021b;
+    margin-top: 22px;
+    font-weight: bold;
+    font-size: 1.3rem;
+    min-height: 1.6em;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 45px;
+    font-size: 1.4rem;
+  }
+
+  th,
+  td {
+    border: 2px solid #2B3990;
+    padding: 18px;
+    text-align: left;
+  }
+
+  th {
+    background-color: #2B3990;
+    color: white;
+    font-size: 1.5rem;
+  }
+
+  #insights {
+    margin-top: 45px;
+    background-color: #e6ebff;
+    padding: 30px;
+    border: 4px solid #2B3990;
+    border-radius: 12px;
+    color: #2B3990;
+    font-weight: 600;
+    font-size: 1.4rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Library Study Pod Booking</h1>
+
+<form id="booking-form" autocomplete="off">
+  <label for="pod-select">Select Pod</label>
+  <select id="pod-select" name="pod"></select>
+
+  <label for="time-input">Select Time(between 0800-1900) </label>
+  <input type="time" id="time-input" name="time" step="3600" min="08:00" max="19:00" />
+
+  <label for="student-ids">Student IDs </label>
+  <input
+    type="text"
+    id="student-ids"
+    name="students"
+    placeholder="e.g., SIT-001, SST-045, SIT-901"
+  />
+
+  <button type="submit">Book</button>
+  <!-- Undo button will be put here dynamically -->
+  
+  <div id="error-message" role="alert" aria-live="polite"></div>
+</form>
+
+<table id="bookings-table" aria-label="Bookings Table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Pod</th>
+      <th>Time</th>
+      <th># Students</th>
+      <th>Student IDs</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Rows will be inserted here -->
+  </tbody>
+</table>
+
+<div id="insights" aria-live="polite">
+  <!-- Insights will be shown here -->
+</div>
+
+<script>
+/*
+In this script I used variables to store pods, bookings, counters, and elements like strings, arrays, and objects.  
+I used control structures such as if/else to check input validity and enforce rules like capacity limits, duplicates, and time constraints.  
+Loops (for) help me go through arrays to parse student IDs, find bookings, count unique students, and build the table and insights.  
+Functions break down the tasks into small parts like parsing inputs, checking times, finding bookings, and updating the UI.  
+Events listen for form submissions and table button clicks to add or remove bookings dynamically.  
+DOM manipulation creates and updates form options, table rows, error messages, insights, and the undo button using createElement, appendChild, and setting textContent.  
+I used  equality (===) to make sure IDs and times match exactly, avoiding bugs from type coercion during comparisons.
+*/
+
+// Data Initialization: pods and initial bookings 
+const pods = [
+  { id: "POD-A", capacity: 4 },
+  { id: "POD-B", capacity: 4 },
+  { id: "POD-C", capacity: 4 }
+];
+const initialBookings = [
+  { podId: "POD-A", time: "09:00", students: ["SIT-001", "SIT-045"] },
+  { podId: "POD-B", time: "10:00", students: ["SMC-210"] }
+];
+
+// Global variables for bookings, duplicates count, and booking history for undo
+let bookings = [];
+let flaggedDuplicatesCount = 0;
+const bookingHistoryStack = [];
+
+// Utility functions .
+
+function parseStudentIds(inputString) {
+  const rawIds = inputString.split(",");
+  const result = [];
+  for (let i = 0; i < rawIds.length; i++) {
+    const trimmed = rawIds[i].trim();
+    if (trimmed !== "") {
+      result.push(trimmed.toUpperCase());
+    }
+  }
+  return result;
+}
+
+function isWithinOperatingHours(timeString) {
+  if (typeof timeString !== "string" || timeString.length !== 5) {
+    return false;
+  }
+  const parts = timeString.split(":");
+  if (parts.length !== 2) {
+    return false;
+  }
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes) || minutes !== 0) {
+    return false;
+  }
+  if (hours < 8 || hours >= 20) {
+    return false;
+  }
+  return true;
+}
+
+function findBooking(podId, timeString) {
+  for (let i = 0; i < bookings.length; i++) {
+    if (bookings[i].podId === podId && bookings[i].time === timeString) {
+      return bookings[i];
+    }
+  }
+  return null;
+}
+
+function hasCrossPodClash(studentId, timeString, currentPodId) {
+  for (let i = 0; i < bookings.length; i++) {
+    const booking = bookings[i];
+    if (
+      booking.time === timeString &&
+      booking.podId !== currentPodId
+    ) {
+      for (let j = 0; j < booking.students.length; j++) {
+        if (booking.students[j] === studentId) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function roundToOneDecimal(number) {
+  return Math.round(number * 10) / 10;
+}
+
+function isDuplicateStudentInSameSlot(studentId, podId, timeString) {
+  const booking = findBooking(podId, timeString);
+  if (booking !== null) {
+    for (let i = 0; i < booking.students.length; i++) {
+      if (booking.students[i] === studentId) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function addBooking(podId, timeString, newStudents) {
+  let booking = findBooking(podId, timeString);
+  if (booking === null) {
+    booking = { podId: podId, time: timeString, students: [] };
+    bookings.push(booking);
+  }
+  for (let i = 0; i < newStudents.length; i++) {
+    const sId = newStudents[i];
+    let exists = false;
+    for (let j = 0; j < booking.students.length; j++) {
+      if (booking.students[j] === sId) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      booking.students.push(sId);
+    }
+  }
+}
+
+function populatePodSelect() {
+  const podSelect = document.getElementById("pod-select");
+  podSelect.innerHTML = "";
+  for (let i = 0; i < pods.length; i++) {
+    const option = document.createElement("option");
+    option.value = pods[i].id;
+    option.textContent = pods[i].id;
+    podSelect.appendChild(option);
+  }
+}
+
+function renderBookingsTable() {
+  const tbody = document.querySelector("#bookings-table tbody");
+  tbody.innerHTML = "";
+  for (let i = 0; i < bookings.length; i++) {
+    const booking = bookings[i];
+    const row = document.createElement("tr");
+
+    const cellIndex = document.createElement("td");
+    cellIndex.textContent = (i + 1).toString();
+    row.appendChild(cellIndex);
+
+    const cellPod = document.createElement("td");
+    cellPod.textContent = booking.podId;
+    row.appendChild(cellPod);
+
+    const cellTime = document.createElement("td");
+    cellTime.textContent = booking.time;
+    row.appendChild(cellTime);
+
+    const cellCount = document.createElement("td");
+    cellCount.textContent = booking.students.length.toString();
+    row.appendChild(cellCount);
+
+    const cellIDs = document.createElement("td");
+    cellIDs.textContent = booking.students.join(", ");
+    row.appendChild(cellIDs);
+
+    const cellActions = document.createElement("td");
+    const btnRemove = document.createElement("button");
+    btnRemove.textContent = "Remove";
+    btnRemove.setAttribute("data-index", i);
+    btnRemove.className = "remove-btn";
+    cellActions.appendChild(btnRemove);
+    row.appendChild(cellActions);
+
+    tbody.appendChild(row);
+  }
+}
+
+function recomputeInsights(bookingsArray, podsArray) {
+  let totalBookings = 0;
+  for (let i = 0; i < bookingsArray.length; i++) {
+    totalBookings += 1;
+  }
+
+  const allStudents = [];
+  for (let i = 0; i < bookingsArray.length; i++) {
+    const students = bookingsArray[i].students;
+    for (let j = 0; j < students.length; j++) {
+      let found = false;
+      for (let k = 0; k < allStudents.length; k++) {
+        if (allStudents[k] === students[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        allStudents.push(students[j]);
+      }
+    }
+  }
+  const uniqueStudentsCount = allStudents.length;
+
+  const hourCounts = {};
+  for (let i = 0; i < bookingsArray.length; i++) {
+    const time = bookingsArray[i].time;
+    if (hourCounts[time] === undefined) {
+      hourCounts[time] = 0;
+    }
+    hourCounts[time] += bookingsArray[i].students.length;
+  }
+  let busiestHour = "";
+  let maxCount = -1;
+  for (const hour in hourCounts) {
+    if (hourCounts.hasOwnProperty(hour)) {
+      if (hourCounts[hour] > maxCount) {
+        maxCount = hourCounts[hour];
+        busiestHour = hour;
+      }
+    }
+  }
+  if (maxCount === -1) {
+    busiestHour = "N/A";
+  }
+
+  let fillRatesOutput = "";
+  for (let i = 0; i < podsArray.length; i++) {
+    const pod = podsArray[i];
+    let totalBookedSeats = 0;
+    const timesUsed = [];
+
+    for (let j = 0; j < bookingsArray.length; j++) {
+      if (bookingsArray[j].podId === pod.id) {
+        totalBookedSeats += bookingsArray[j].students.length;
+        let timeExists = false;
+        for (let k = 0; k < timesUsed.length; k++) {
+          if (timesUsed[k] === bookingsArray[j].time) {
+            timeExists = true;
+            break;
+          }
+        }
+        if (!timeExists) {
+          timesUsed.push(bookingsArray[j].time);
+        }
+      }
+    }
+    const slotsCount = timesUsed.length;
+    let fillRate = 0;
+    if (slotsCount > 0) {
+      fillRate = (totalBookedSeats / (pod.capacity * slotsCount)) * 100;
+    }
+    const roundedFillRate = roundToOneDecimal(fillRate);
+    fillRatesOutput += pod.id + ": " + roundedFillRate + "%  ";
+  }
+
+  const flaggedMessage = flaggedDuplicatesCount.toString();
+
+  const container = document.getElementById("insights");
+  container.innerHTML =
+    "<h2> Insights Panel </h2>" +
+    "<p><strong>Total bookings made today:</strong> " + totalBookings + "</p>" +
+    "<p><strong>Total unique students served:</strong> " + uniqueStudentsCount + "</p>" +
+    "<p><strong>Busiest hour:</strong> " + busiestHour + "</p>" +
+    "<p><strong>Fill-rate per pod:</strong> " + fillRatesOutput + "</p>" +
+    "<p><strong>Flagged duplicate booking attempts:</strong> " + flaggedMessage + "</p>";
+}
+
+function showError(message) {
+  const errorDiv = document.getElementById("error-message");
+  errorDiv.textContent = message;
+}
+function clearError() {
+  const errorDiv = document.getElementById("error-message");
+  errorDiv.textContent = "";
+}
+function clearAndFocusStudentInput() {
+  const input = document.getElementById("student-ids");
+  input.value = "";
+  input.focus();
+}
+
+// A Booking Form submission handler
+function handleFormSubmit(event) {
+  event.preventDefault();
+
+  const podSelect = document.getElementById("pod-select");
+  const timeInput = document.getElementById("time-input");
+  const studentIdsInput = document.getElementById("student-ids");
+
+  const podId = podSelect.value;
+  const time = timeInput.value;
+  const studentIdsRaw = studentIdsInput.value;
+
+  if (podId === "") {
+    showError("Please select a pod.");
+    return;
+  }
+  if (!isWithinOperatingHours(time)) {
+    showError("Please select a valid time between 08:00 and 19:00 (inclusive).");
+    return;
+  }
+
+  const studentIds = parseStudentIds(studentIdsRaw);
+  if (studentIds.length === 0) {
+    showError("Please enter at least one valid student ID.");
+    return;
+  }
+
+  let booking = findBooking(podId, time);
+  let currentStudentsCount = 0;
+  let currentStudents = [];
+  if (booking !== null) {
+    currentStudents = booking.students;
+    currentStudentsCount = currentStudents.length;
+  }
+
+  let newUniqueStudentsToAdd = [];
+
+  for (let i = 0; i < studentIds.length; i++) {
+    let sId = studentIds[i];
+
+    if (isDuplicateStudentInSameSlot(sId, podId, time)) {
+      flaggedDuplicatesCount++;
+      showError("Student " + sId + " is already booked in " + podId + " at " + time + ".");
+      return;
+    }
+
+    if (hasCrossPodClash(sId, time, podId)) {
+      flaggedDuplicatesCount++;
+      showError(
+        "Student " +
+          sId +
+          " has a conflicting booking in another pod at " +
+          time +
+          "."
+      );
+      return;
+    }
+
+    let alreadyCounted = false;
+    for (let j = 0; j < newUniqueStudentsToAdd.length; j++) {
+      if (newUniqueStudentsToAdd[j] === sId) {
+        alreadyCounted = true;
+        break;
+      }
+    }
+    if (!alreadyCounted) {
+      newUniqueStudentsToAdd.push(sId);
+    }
+  }
+
+  if (currentStudentsCount + newUniqueStudentsToAdd.length > 4) {
+    showError("Booking exceeds pod capacity of 4 students for this time slot.");
+    return;
+  }
+
+  addBooking(podId, time, newUniqueStudentsToAdd);
+
+  // Push successful booking to undo stack
+  bookingHistoryStack.push({ podId: podId, time: time });
+
+  clearError();
+  clearAndFocusStudentInput();
+
+  renderBookingsTable();
+  recomputeInsights(bookings, pods);
+}
+
+// B Event Delegation: Remove booking row
+function handleTableClick(event) {
+  if (event.target.classList.contains("remove-btn")) {
+    const index = parseInt(event.target.getAttribute("data-index"), 10);
+    if (isNaN(index) || index < 0 || index >= bookings.length) {
+      return;
+    }
+    bookings.splice(index, 1);
+    renderBookingsTable();
+    recomputeInsights(bookings, pods);
+  }
+}
+
+// Add Undo Button under the form dynamically
+function addUndoButton() {
+  const form = document.getElementById("booking-form");
+
+  const undoBtn = document.createElement("button");
+  undoBtn.type = "button";
+  undoBtn.id = "undo-button";
+  undoBtn.textContent = "Undo Last Booking";
+
+  undoBtn.title = "Undo the last successful booking";
+
+  // Insert after the Book button
+  const bookBtn = form.querySelector("button[type=submit]");
+  bookBtn.insertAdjacentElement("afterend", undoBtn);
+
+  undoBtn.addEventListener("click", undoLastBooking);
+}
+
+// Undo last booking function
+function undoLastBooking() {
+  if (bookingHistoryStack.length === 0) {
+    showError("No bookings to undo.");
+    return;
+  }
+
+  const lastBooking = bookingHistoryStack.pop();
+
+  for (let i = 0; i < bookings.length; i++) {
+    const b = bookings[i];
+    if (b.podId === lastBooking.podId && b.time === lastBooking.time) {
+      bookings.splice(i, 1);
+      break;
+    }
+  }
+
+  clearError();
+  renderBookingsTable();
+  recomputeInsights(bookings, pods);
+}
+
+/*  
+Edge case handling:
+- Duplicates cleaned from input strings,
+- Case normalized,
+- Time validated carefully,
+- Empty student lists blocked.
+*/
+
+function init() {
+  bookings = initialBookings.slice();
+
+  populatePodSelect();
+  addUndoButton();
+  renderBookingsTable();
+  recomputeInsights(bookings, pods);
+
+  const form = document.getElementById("booking-form");
+  form.addEventListener("submit", handleFormSubmit);
+
+  const tbody = document.querySelector("#bookings-table tbody");
+  tbody.addEventListener("click", handleTableClick);
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
